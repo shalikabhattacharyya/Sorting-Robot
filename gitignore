@@ -1,0 +1,13 @@
+# generated artifacts — regenerate from code, don't commit
+shape_dataset/
+shape_classifier.pkl
+shape_classifier_backup.pkl
+pyramid.obj
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# os
+.DS_Store
