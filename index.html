@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vision-Guided Sorting Arm — Interactive Demo</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1e222b; --line:#2a2f3a;
+    --ink:#e8eaed; --ink-dim:#9aa1ad; --ink-mute:#6b7280;
+    --sphere:#c4564e; --cube:#4f9d63; --pyramid:#4a72b0; --other:#8a8f99;
+    --accent:#5b8def; --radius:10px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5}
+  .wrap{max-width:1220px;margin:0 auto;padding:20px}
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  header h1{font-size:19px;font-weight:600;margin:0;letter-spacing:-0.01em}
+  header .sub{color:var(--ink-dim);font-size:13px}
+  .layout{display:grid;grid-template-columns:1fr 310px;gap:16px}
+  @media(max-width:900px){.layout{grid-template-columns:1fr}}
+  .stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;min-height:440px}
+  #scene{display:block;width:100%;height:540px}
+  @media(max-width:900px){#scene{height:420px}}
+  .badge{position:absolute;top:12px;left:12px;background:rgba(15,17,21,.82);border:1px solid var(--line);
+    border-radius:8px;padding:6px 10px;font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
+  .nn-view{display:flex;gap:9px;align-items:center}
+  .nn-crop{width:46px;height:46px;border-radius:6px;background:#0b0d11;border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;flex:none;position:relative;overflow:hidden}
+  .nn-bars{flex:1;display:flex;flex-direction:column;gap:2px}
+  .nn-bar{display:flex;align-items:center;gap:5px;font-size:9px}
+  .nn-bar .lbl{width:40px;color:var(--ink-dim)}
+  .nn-bar .track{flex:1;height:6px;background:#0b0d11;border-radius:3px;overflow:hidden}
+  .nn-bar .fill{height:100%;width:0;border-radius:3px;transition:width .18s}
+  .nn-bar .pct{width:24px;text-align:right;color:var(--ink-dim)}
+  .nn-idle{color:var(--ink-mute);font-style:italic;font-size:11px}
+  .scan{position:absolute;left:0;right:0;height:2px;background:var(--accent);opacity:.8;top:0;display:none}
+  .col{display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:11px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-mute);margin:0 0 8px;font-weight:600}
+  .row{display:flex;gap:8px}
+  button.ctrl{flex:1;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)}
+  button.ctrl:hover:not(:disabled){border-color:#3a4150;background:#232833}
+  button.ctrl:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover:not(:disabled){background:#4d7ee0}
+  .spawn-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  button.spawn{display:flex;align-items:center;gap:7px;justify-content:flex-start;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:7px 9px;
+    color:var(--ink);font-size:12px;cursor:pointer;font-family:var(--font)}
+  button.spawn:hover:not(:disabled){border-color:#3a4150;background:#232833}
+  button.spawn:disabled{opacity:.4;cursor:not-allowed}
+  .dot{width:11px;height:11px;border-radius:3px;flex:none}
+  .dot.sphere{background:var(--sphere);border-radius:50%}
+  .dot.cube{background:var(--cube)}
+  .dot.pyramid{background:var(--pyramid);border-radius:2px}
+  .dot.other{background:var(--other);border-radius:50%}
+  .plus{color:var(--ink-mute);font-weight:500;font-size:15px;flex:none;width:12px;text-align:center}
+  .cap-note{font-size:10px;color:var(--ink-mute);margin-top:6px}
+  .slider-row{display:flex;align-items:center;gap:10px}
+  input[type=range]{flex:1;accent-color:var(--accent)}
+  .slider-val{font-family:var(--mono);font-size:13px;color:var(--ink);min-width:34px;text-align:right}
+  .detect-list{display:flex;flex-direction:column;gap:4px;max-height:110px;overflow-y:auto}
+  .detect-item{display:flex;align-items:center;gap:7px;font-size:12px;padding:4px 7px;background:var(--panel-2);border-radius:6px}
+  .detect-item .name{flex:1;color:var(--ink-dim)}
+  .detect-item .conf{font-family:var(--mono);color:var(--ink);font-size:11px}
+  .detect-item.miss .conf{color:var(--sphere)}
+  .detect-empty{color:var(--ink-mute);font-size:13px;font-style:italic}
+  .status{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
+  .status .pip{width:8px;height:8px;border-radius:50%;background:var(--ink-mute);flex:none}
+  .status.run .pip{background:var(--cube)}
+  .status.detect .pip{background:var(--pyramid)}
+  .status.sort .pip{background:var(--accent)}
+  .status.done .pip{background:var(--sphere)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:2px}
+  .legend span{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-dim)}
+  .foot{margin-top:16px;color:var(--ink-mute);font-size:12px;line-height:1.6}
+  .foot code{font-family:var(--mono);color:var(--ink-dim)}
+  .count{font-family:var(--mono);color:var(--ink-dim);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Vision-Guided Sorting Arm</h1>
+    <span class="sub">a 7-DOF arm classifies each object's shape, then sorts it into the matching bin</span>
+  </header>
+
+  <div class="layout">
+    <div class="stage">
+      <canvas id="scene"></canvas>
+      <div class="badge" id="camBadge">arm camera · idle</div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <h2>Controls</h2>
+        <div class="row">
+          <button class="ctrl primary" id="playBtn">Play</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Spawn a shape <span class="count" id="objCount">(0/12)</span></h2>
+        <div class="spawn-grid">
+          <button class="spawn" data-kind="sphere"><span class="plus">+</span><span class="dot sphere"></span>Sphere</button>
+          <button class="spawn" data-kind="cube"><span class="plus">+</span><span class="dot cube"></span>Cube</button>
+          <button class="spawn" data-kind="pyramid"><span class="plus">+</span><span class="dot pyramid"></span>Pyramid</button>
+          <button class="spawn" data-kind="other"><span class="plus">+</span><span class="dot other"></span>Other</button>
+        </div>
+        <div class="cap-note" id="spawnNote">up to 12 objects &middot; can't add while sorting</div>
+      </div>
+
+      <div class="card">
+        <h2>Detector · ResNet-18</h2>
+        <div class="nn-view">
+          <div class="nn-crop" id="nnCrop"><div class="scan" id="scan"></div><span class="nn-idle" id="nnIdle">&mdash;</span></div>
+          <div class="nn-bars">
+            <div class="nn-bar"><span class="lbl">sphere</span><span class="track"><span class="fill" data-k="sphere" style="background:var(--sphere)"></span></span><span class="pct" data-p="sphere">0%</span></div>
+            <div class="nn-bar"><span class="lbl">cube</span><span class="track"><span class="fill" data-k="cube" style="background:var(--cube)"></span></span><span class="pct" data-p="cube">0%</span></div>
+            <div class="nn-bar"><span class="lbl">pyramid</span><span class="track"><span class="fill" data-k="pyramid" style="background:var(--pyramid)"></span></span><span class="pct" data-p="pyramid">0%</span></div>
+            <div class="nn-bar"><span class="lbl">other</span><span class="track"><span class="fill" data-k="other" style="background:var(--other)"></span></span><span class="pct" data-p="other">0%</span></div>
+          </div>
+        </div>
+        <div class="detect-list" id="detectList" style="margin-top:9px">
+          <div class="detect-empty">no objects classified yet</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Status</h2>
+        <div class="status" id="status"><span class="pip"></span><span id="statusText">idle</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot sphere"></span>sphere &rarr; red bin</span>
+    <span><span class="dot cube"></span>cube &rarr; green bin</span>
+    <span><span class="dot pyramid"></span>pyramid &rarr; blue bin</span>
+    <span><span class="dot other"></span>duck / bunny &rarr; gray bin</span>
+  </div>
+
+  <p class="foot">
+    A browser recreation of a PyBullet project: a ResNet-18 classifies each 3D object from a rendered
+    crop (angled at &minus;45&deg;, matching training), and a 7-DOF KUKA-style arm sorts it into the
+    labeled bin &mdash; the model's prediction is the only source of identity. The detector panel mirrors
+    the live classification; the real model and physics run in <code>run_robot.py</code>.
+  </p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  var BASE={sphere:0xc4564e, cube:0x4f9d63, pyramid:0x4a72b0, other:0x8a8f99}; // bin/legend colors, calmer
+  var BIN_ORDER=['sphere','cube','pyramid','other'];
+  var BIN_X={sphere:-2.0,cube:-0.68,pyramid:0.68,other:2.0};
+  var BIN_Z=-2.1, MAX_OBJ=12;
+
+  // fully random color per object (like random_color() in the real project) —
+  // the model must judge by SHAPE, since color tells it nothing
+  function randColor(){
+    // muted random colors, but skip pink/magenta/purple. hue is a fraction of the
+    // color wheel: reds/oranges/yellows/greens/cyans/blues are ~0.0-0.66; pink and
+    // purple live ~0.72-0.98, which we avoid. one narrow lavender slice is allowed.
+    var h;
+    if(Math.random()<0.12){ h=0.70+Math.random()*0.03; }   // occasional muted lavender
+    else { h=Math.random()*0.66; }                          // red through blue only
+    return new THREE.Color().setHSL(h, 0.30+Math.random()*0.22, 0.47+Math.random()*0.14);
+  }
+
+  var canvas=document.getElementById('scene');
+  var renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+  var scene=new THREE.Scene(); scene.background=new THREE.Color(0x171a21);
+  var camera=new THREE.PerspectiveCamera(45,1,0.1,100);
+  camera.position.set(0,4.6,6.4); camera.lookAt(0,0.3,-0.7);
+
+  scene.add(new THREE.AmbientLight(0xffffff,0.6));
+  var keyL=new THREE.DirectionalLight(0xffffff,0.85);
+  keyL.position.set(4,9,5); keyL.castShadow=true; keyL.shadow.mapSize.set(1024,1024);
+  keyL.shadow.camera.left=-7;keyL.shadow.camera.right=7;keyL.shadow.camera.top=7;keyL.shadow.camera.bottom=-7;
+  scene.add(keyL);
+  var fillL=new THREE.DirectionalLight(0xaac4ff,0.25); fillL.position.set(-5,3,-2); scene.add(fillL);
+
+  var floor=new THREE.Mesh(new THREE.PlaneGeometry(16,14),
+    new THREE.MeshStandardMaterial({color:0x11141a,roughness:0.95}));
+  floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+  var grid=new THREE.GridHelper(16,32,0x2a2f3a,0x21252e); grid.position.y=0.001; scene.add(grid);
+
+  function makeBin(kind,x){
+    var g=new THREE.Group(), col=BASE[kind];
+    var w=1.25,d=1.25,h=0.6,t=0.06;
+    var wallMat=new THREE.MeshStandardMaterial({color:0xdfeaf4,transparent:true,opacity:0.15,roughness:0.3});
+    var edgeMat=new THREE.MeshStandardMaterial({color:0xf3f8ff,transparent:true,opacity:0.5});
+    var floorMat=new THREE.MeshStandardMaterial({color:col,transparent:true,opacity:0.32});
+    var fl=new THREE.Mesh(new THREE.BoxGeometry(w,t,d),floorMat); fl.position.y=t/2; g.add(fl);
+    [[0,d/2,w,t],[0,-d/2,w,t],[w/2,0,t,d],[-w/2,0,t,d]].forEach(function(a){
+      var m=new THREE.Mesh(new THREE.BoxGeometry(a[2],h,a[3]),wallMat); m.position.set(a[0],h/2,a[1]); g.add(m);
+    });
+    [[w/2,d/2],[w/2,-d/2],[-w/2,d/2],[-w/2,-d/2]].forEach(function(p){
+      var post=new THREE.Mesh(new THREE.BoxGeometry(0.06,h,0.06),edgeMat); post.position.set(p[0],h/2,p[1]); g.add(post);
+    });
+    var label=new THREE.Mesh(new THREE.BoxGeometry(w*0.55,0.14,0.03),
+      new THREE.MeshStandardMaterial({color:col})); label.position.set(0,h*0.8,d/2+0.02); g.add(label);
+    g.position.set(x,0,BIN_Z); scene.add(g); return g;
+  }
+  BIN_ORDER.forEach(function(k){ makeBin(k,BIN_X[k]); });
+
+  // KUKA iiwa palette: warm orange links, charcoal joint housings, pale accent rings
+  // real KUKA iiwa palette: grey-blue links, ORANGE joint housings, dark accents
+  var linkMat=new THREE.MeshStandardMaterial({color:0x8ea3bd,roughness:0.5,metalness:0.15});   // grey-blue
+  var jointMat=new THREE.MeshStandardMaterial({color:0xe87d1e,roughness:0.5,metalness:0.15});  // orange bands
+  var ringMat=new THREE.MeshStandardMaterial({color:0x2b3038,roughness:0.55,metalness:0.3});   // dark accent
+  var baseMat=new THREE.MeshStandardMaterial({color:0x23272e,roughness:0.7});
+
+  // one segment = an ORANGE joint housing band + a grey-blue link + a dark ring,
+  // matching the real KUKA iiwa (blue-grey limbs, orange joints)
+  function seg(len,rad){
+    var g=new THREE.Group();
+    var housing=new THREE.Mesh(new THREE.CylinderGeometry(rad*1.34,rad*1.34,rad*1.5,24),jointMat);
+    housing.position.y=rad*0.5; housing.castShadow=true; g.add(housing);
+    var bar=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad,len,24),linkMat);
+    bar.position.y=len/2; bar.castShadow=true; g.add(bar);
+    var ring=new THREE.Mesh(new THREE.CylinderGeometry(rad*1.1,rad*1.1,rad*0.5,24),ringMat);
+    ring.position.y=len-rad*0.4; g.add(ring);
+    var tp=new THREE.Group(); tp.position.y=len; g.add(tp);
+    return {group:g, tip:tp};
+  }
+
+  var armRoot=new THREE.Group(); scene.add(armRoot);
+  var base=new THREE.Mesh(new THREE.CylinderGeometry(0.46,0.58,0.34,32),baseMat);
+  base.position.y=0.17; base.castShadow=true; armRoot.add(base);
+  var baseCap=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.46,0.1,32),linkMat);
+  baseCap.position.y=0.36; armRoot.add(baseCap);
+
+  // taller arm: longer segments so it stands up higher and reaches less awkwardly
+  var j1=new THREE.Group(); j1.position.y=0.4; armRoot.add(j1);
+  var s1=seg(0.7,0.16); j1.add(s1.group);
+  var j2=s1.tip; var s2=seg(1.15,0.14); j2.add(s2.group);
+  var j3=s2.tip; var s3=seg(1.0,0.125); j3.add(s3.group);
+  var j4=s3.tip; var s4=seg(0.6,0.11); j4.add(s4.group);
+  var wrist=s4.tip;
+  var flange=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.13,0.18,20),jointMat);
+  flange.castShadow=true; wrist.add(flange);
+  var flangeFace=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,0.05,20),ringMat);
+  flangeFace.position.y=-0.09; wrist.add(flangeFace);
+  var tip=new THREE.Object3D(); tip.position.y=-0.12; wrist.add(tip);
+
+  var rest=solveRest();
+  function solveRest(){ return {y:0, sh:0.15, el:0.4}; }  // slightly bent, upright
+  var js={y:0,sh:0.15,el:0.4}, jt={y:0,sh:0.15,el:0.4};
+
+  function duckLike(kind, color){
+    var g=new THREE.Group();
+    var mat=new THREE.MeshStandardMaterial({color:color,roughness:0.5});
+    if(kind==='duck'){
+      // rounded body, upright neck, head, flat bill
+      var bodyGeo=new THREE.SphereGeometry(0.16,22,18); bodyGeo.scale(1.3,0.95,1.0);
+      var body=new THREE.Mesh(bodyGeo,mat); body.position.y=0.02; body.castShadow=true; g.add(body);
+      var tail=new THREE.Mesh(new THREE.ConeGeometry(0.07,0.14,12),mat);
+      tail.rotation.z=-Math.PI/2.2; tail.position.set(-0.2,0.06,0); g.add(tail);
+      var neck=new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.07,0.16,14),mat);
+      neck.position.set(0.16,0.12,0); neck.rotation.z=-0.25; g.add(neck);
+      var head=new THREE.Mesh(new THREE.SphereGeometry(0.085,18,16),mat);
+      head.position.set(0.2,0.2,0); head.castShadow=true; g.add(head);
+      var bill=new THREE.Mesh(new THREE.BoxGeometry(0.11,0.035,0.06),
+        new THREE.MeshStandardMaterial({color:0xf0a500,roughness:0.5}));
+      bill.position.set(0.29,0.19,0); g.add(bill);
+      var eye=new THREE.Mesh(new THREE.SphereGeometry(0.014,8,8),
+        new THREE.MeshStandardMaterial({color:0x111111})); eye.position.set(0.235,0.225,0.055); g.add(eye);
+      g.userData.h=0.42;
+    } else {
+      // bunny: rounder body, small head, two tall ears, tail
+      var bodyGeo2=new THREE.SphereGeometry(0.15,22,18); bodyGeo2.scale(1.15,1.05,1.0);
+      var body2=new THREE.Mesh(bodyGeo2,mat); body2.position.y=0.03; body2.castShadow=true; g.add(body2);
+      var head2=new THREE.Mesh(new THREE.SphereGeometry(0.1,18,16),mat);
+      head2.position.set(0.15,0.14,0); head2.castShadow=true; g.add(head2);
+      var earGeo=new THREE.CylinderGeometry(0.025,0.02,0.2,10);
+      var ear1=new THREE.Mesh(earGeo,mat); ear1.position.set(0.15,0.3,0.05); ear1.rotation.z=0.15; ear1.castShadow=true; g.add(ear1);
+      var ear2=new THREE.Mesh(earGeo,mat); ear2.position.set(0.15,0.3,-0.05); ear2.rotation.z=-0.15; ear2.castShadow=true; g.add(ear2);
+      var tail2=new THREE.Mesh(new THREE.SphereGeometry(0.05,12,12),mat);
+      tail2.position.set(-0.16,0.05,0); g.add(tail2);
+      var eye2=new THREE.Mesh(new THREE.SphereGeometry(0.014,8,8),
+        new THREE.MeshStandardMaterial({color:0x111111})); eye2.position.set(0.22,0.16,0.06); g.add(eye2);
+      g.userData.h=0.44;
+    }
+    return g;
+  }
+  function shapeMesh(kind){
+    var s=0.19, color=randColor();
+    if(kind==='other'){ var which=Math.random()<0.5?'duck':'bunny';
+      var g=duckLike(which,color); g.userData.sub=which; return g; }
+    var geo;
+    if(kind==='sphere') geo=new THREE.SphereGeometry(s,24,24);
+    else if(kind==='cube') geo=new THREE.BoxGeometry(s*1.6,s*1.6,s*1.6);
+    else geo=new THREE.ConeGeometry(s*1.3,s*2.0,4);
+    var m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:color,roughness:0.45,metalness:0.05}));
+    m.castShadow=true;
+    m.userData.h=(kind==='cube'?s*1.6:(kind==='pyramid'?s*2.0:s*2));
+    return m;
+  }
+
+  var objects=[], running=false, phase='idle', paused=false;
+  var queue=[], current=null, subStep=0, t=0;
+
+  var els={
+    play:document.getElementById('playBtn'),
+    detect:document.getElementById('detectList'), status:document.getElementById('status'),
+    statusText:document.getElementById('statusText'), badge:document.getElementById('camBadge'),
+    count:document.getElementById('objCount'), spawnBtns:[].slice.call(document.querySelectorAll('.spawn')),
+    spawnNote:document.getElementById('spawnNote'),
+    nnCrop:document.getElementById('nnCrop'), nnIdle:document.getElementById('nnIdle'),
+    scan:document.getElementById('scan'), fills:{}, pcts:{}
+  };
+  BIN_ORDER.forEach(function(k){
+    els.fills[k]=document.querySelector('.fill[data-k="'+k+'"]');
+    els.pcts[k]=document.querySelector('.pct[data-p="'+k+'"]');
+  });
+
+  function setStatus(cls,text){ els.status.className='status '+cls; els.statusText.textContent=text; }
+  function updateCount(){
+    els.count.textContent='('+objects.length+'/'+MAX_OBJ+')';
+    var full=objects.length>=MAX_OBJ;
+    els.spawnBtns.forEach(function(b){ b.disabled=running||full; });
+    els.spawnNote.textContent = running ? (paused?"paused · press play to resume":"sorting in progress · can't add now")
+      : (full ? "at 12 objects · reset to add more" : "up to 12 objects · can't add while sorting");
+  }
+
+  function spawn(kind){
+    if(running||objects.length>=MAX_OBJ) return;
+    var m=shapeMesh(kind);
+    var yBase=(m.userData.h||0.3)/2;
+    var newRad=(kind==='cube')?0.16:(kind==='pyramid'?0.16:(kind==='other'?0.19:0.19));
+    // scatter across a wide arc in front of the arm, clear of the bins, and
+    // guaranteed not overlapping any existing object (spacing = sum of radii + gap)
+    var x,z,ok=false,tries=0;
+    while(!ok && tries<120){
+      tries++;
+      var angle=(Math.random()*2.0-1.0);        // arc, ±1.0 rad
+      var r=1.5+Math.random()*1.2;              // closer range, less far reaching
+      x=Math.sin(angle)*r; z=0.6+Math.cos(angle)*r*0.5;
+      if(z<0.2){ ok=false; continue; }          // keep in front, off the bin row
+      ok=true;
+      for(var i=0;i<objects.length;i++){
+        var q=objects[i].mesh.position, qr=objects[i].rad||0.19;
+        var need=newRad+qr+0.18;                // radii plus a clear gap between them
+        if(Math.hypot(x-q.x,z-q.z)<need){ ok=false; break; }
+      }
+    }
+    m.position.set(x,yBase,z); m.rotation.y=Math.random()*Math.PI*2;
+    scene.add(m);
+    objects.push({mesh:m,kind:kind,sorted:false,prediction:null,yBase:yBase,rad:newRad,vx:0,vy:0,vz:0});
+    updateCount(); renderDetect();
+  }
+
+  function renderDetect(){
+    var c=objects.filter(function(o){return o.prediction;});
+    if(!c.length){ els.detect.innerHTML='<div class="detect-empty">no objects classified yet</div>'; return; }
+    els.detect.innerHTML=c.map(function(o){
+      var miss=o.prediction!==o.kind?' miss':'';
+      return '<div class="detect-item'+miss+'"><span class="dot '+o.prediction+'"></span>'+
+        '<span class="name">'+o.prediction+'</span>'+
+        '<span class="conf">'+Math.round(o.conf*100)+'%</span></div>';
+    }).join('');
+  }
+
+  function classify(o){
+    var pred=o.kind, conf;
+    if(o.kind==='other'&&Math.random()<0.18){ pred='pyramid'; conf=0.5+Math.random()*0.12; }
+    else conf=0.9+Math.random()*0.095;
+    o.prediction=pred; o.conf=conf;
+  }
+
+  // tiny offscreen renderer to snapshot the object's SHAPE for the detector crop
+  var snapCanvas=document.createElement('canvas'); snapCanvas.width=46; snapCanvas.height=46;
+  var snapRenderer=new THREE.WebGLRenderer({canvas:snapCanvas,antialias:true,alpha:true});
+  snapRenderer.setClearColor(0x0b0d11,1);
+  var snapScene=new THREE.Scene();
+  snapScene.add(new THREE.AmbientLight(0xffffff,0.7));
+  var snapLight=new THREE.DirectionalLight(0xffffff,0.8); snapLight.position.set(2,3,2); snapScene.add(snapLight);
+  var snapCam=new THREE.PerspectiveCamera(40,1,0.1,10); // matches the -45 angled view
+  snapCam.position.set(0.6,0.6,0.6); snapCam.lookAt(0,0,0);
+  function snapshot(o){
+    var clone=o.mesh.clone(true);
+    clone.position.set(0,0,0); clone.rotation.set(0,0.6,0);
+    // gray out the object so the crop shows silhouette/shape, like the real gray-masked crop
+    clone.traverse(function(c){ if(c.isMesh){ c.material=new THREE.MeshStandardMaterial({color:0xb9bfc9,roughness:0.6}); } });
+    snapScene.add(clone);
+    snapRenderer.render(snapScene,snapCam);
+    snapScene.remove(clone);
+    els.nnCrop.style.background='url('+snapCanvas.toDataURL()+') center/cover';
+  }
+
+  function showDetection(o,done){
+    els.nnIdle.style.display='none';
+    snapshot(o);
+    els.scan.style.display='block'; els.scan.style.top='0';
+    var probs={sphere:0.02,cube:0.02,pyramid:0.02,other:0.02}; probs[o.prediction]=o.conf;
+    var restP=1-o.conf, others=BIN_ORDER.filter(function(k){return k!==o.prediction;});
+    others.forEach(function(k){ probs[k]=restP/others.length*(0.6+Math.random()*0.8); });
+    var f=0, steps=14;
+    var iv=setInterval(function(){
+      f++; els.scan.style.top=(f/steps*46)+'px';
+      BIN_ORDER.forEach(function(k){
+        var v=probs[k]*(f/steps);
+        els.fills[k].style.width=(v*100)+'%';
+        els.pcts[k].textContent=Math.round(v*100)+'%';
+      });
+      if(f>=steps){ clearInterval(iv); els.scan.style.display='none'; setTimeout(done,150); }
+    },34);
+  }
+
+  var detectList=[], detectIdx=0;   // detection progress (survives pause)
+  function beginRun(){
+    var unsorted=objects.filter(function(o){return !o.sorted;});
+    if(!unsorted.length){ setStatus('done','nothing to sort — spawn a shape'); running=false; els.play.textContent='Play'; updateCount(); return; }
+    running=true; paused=false; els.play.textContent='Reset'; updateCount();
+    phase='detect'; els.badge.textContent='arm camera · classifying';
+    setStatus('detect','detecting shapes…');
+    detectList=unsorted; detectIdx=0;
+    resumeDetect();
+  }
+  function resumeDetect(){
+    if(!running||paused) return;
+    if(detectIdx>=detectList.length){
+      renderDetect();
+      queue=detectList.slice().sort(function(a,b){return a.mesh.position.length()-b.mesh.position.length();});
+      phase='sort'; nextPick(); return;
+    }
+    var o=detectList[detectIdx++]; classify(o); renderDetect();
+    showDetection(o, resumeDetect);
+  }
+
+  function nextPick(){
+    current=queue.shift();
+    if(!current){ phase='done'; setStatus('done','all objects sorted'); els.badge.textContent='arm camera · idle';
+      running=false; els.play.textContent='Reset'; startMove({y:0,sh:rest.sh,el:rest.el},0.7); updateCount(); return; }
+    subStep='approach';
+    var p=current.mesh.position;
+    startMove(ikTarget(p.x,p.z,HOVER_Y),0.9);   // swing over the object
+    setStatus('sort','sorting '+current.prediction+'…');
+    els.badge.textContent='arm camera · picking';
+  }
+
+  // sinusoidal easing: 0->1 slow-in/slow-out (matches move_to_config in the real project)
+  function ease(u){ return 0.5*(1-Math.cos(Math.PI*Math.min(Math.max(u,0),1))); }
+
+  // set joint targets to reach a ground point at a given height (hover vs down)
+  // ---- REAL inverse kinematics (2-bone analytic, law of cosines) ----
+  // The arm reaches a 3D target. We rotate the base to face it (yaw), then solve
+  // the shoulder + elbow angles that place the wrist AT the target in that plane.
+  // Bone lengths (must match the visible segments below):
+  var L_UP=1.85;   // shoulder -> elbow  (segments s1+s2)
+  var L_FORE=1.6;  // elbow -> wrist     (segments s3+s4)
+  var SHOULDER_Y=0.4; // base height where the arm starts
+
+  // solve for {y (base yaw), sh (shoulder pitch), el (elbow pitch)} to reach (tx,ty,tz)
+  function solveIK(tx,ty,tz){
+    var yaw=Math.atan2(tx,tz);                 // face the target
+    var horiz=Math.sqrt(tx*tx+tz*tz);          // horizontal distance from base
+    var vy=ty-SHOULDER_Y;                       // height of target above shoulder
+    var reach=Math.sqrt(horiz*horiz+vy*vy);     // straight-line distance to target
+    reach=Math.min(reach, (L_UP+L_FORE)*0.999); // clamp to what the arm can reach
+    // angle of the target line above horizontal
+    var lineAng=Math.atan2(vy,horiz);
+    // law of cosines: angle at shoulder between upper arm and the target line
+    var cosA=(L_UP*L_UP+reach*reach-L_FORE*L_FORE)/(2*L_UP*reach);
+    cosA=Math.min(1,Math.max(-1,cosA));
+    var a=Math.acos(cosA);
+    // angle at elbow between upper arm and forearm
+    var cosB=(L_UP*L_UP+L_FORE*L_FORE-reach*reach)/(2*L_UP*L_FORE);
+    cosB=Math.min(1,Math.max(-1,cosB));
+    var b=Math.acos(cosB);
+    // shoulder pitch measured from vertical (0 = straight up)
+    var shoulder=(Math.PI/2 - lineAng) - a;
+    var elbow=(Math.PI - b);
+    return {y:yaw, sh:shoulder, el:elbow};
+  }
+
+  // snap the arm to its rest pose instantly (used on reset)
+  function aimHome(){ js.y=0; js.sh=rest.sh; js.el=rest.el; jt.y=0; jt.sh=rest.sh; jt.el=rest.el; move=null; }
+
+  // ---- move-based sinusoidal interpolation ----
+  // Each move captures the current joint angles, an exact target, and a duration.
+  // Progress u goes 0->1 over the duration; the sine ease makes it start and stop
+  // smoothly, and because we blend start->target by ease(u), it arrives EXACTLY.
+  var move=null;  // {from:{y,sh,el}, to:{y,sh,el}, dur, t}
+  var holdT=0, holdAfter=0;   // brief settle at the end of a move (shows the ease tail)
+  function startMove(target, dur, hold){
+    move={ from:{y:js.y,sh:js.sh,el:js.el}, to:target, dur:dur, t:0 };
+    holdAfter=hold||0;
+  }
+  function ikTarget(x,z,ty){ return solveIK(x,ty,z); }
+
+  var HOVER_Y=0.75, DOWN_Y=0.18;   // hover height vs down-onto-object height
+  var BIN_TOP=0.6;                  // bin walls top out here
+  var CARRY_Y=1.15;                 // carry the object well ABOVE the bin walls (no plowing)
+
+  function stepSort(dt){
+    if(!current) return; var o=current;
+    if(holdT>0){ holdT-=dt; if(holdT<=0){ holdT=0; onArrive(); } return; }  // brief settle
+    if(move){                                   // a move is in progress
+      move.t+=dt;
+      var u=Math.min(move.t/move.dur,1), e=ease(u);
+      js.y = move.from.y + (move.to.y-move.from.y)*e;
+      js.sh= move.from.sh+ (move.to.sh-move.from.sh)*e;
+      js.el= move.from.el+ (move.to.el-move.from.el)*e;
+      if(u>=1){ move=null; holdT=holdAfter; if(holdT<=0) onArrive(); }
+      return;
+    }
+  }
+
+  // called when a move finishes; advances the pick sequence
+  function onArrive(){
+    var o=current; if(!o) return; var p=o.mesh.position;
+    if(subStep==='approach'){ subStep='descend';
+      var topY=(o.mesh.userData.h||0.3);
+      startMove(ikTarget(p.x,p.z,topY+0.24+0.001),0.75,0.15); }   // hold: settle before grab
+    else if(subStep==='descend'){ o.grabbed=true; grabInit(o); subStep='lift'; startMove(ikTarget(p.x,p.z,CARRY_Y),0.75,0.1); }
+    else if(subStep==='lift'){ subStep='carry'; startMove(ikTarget(BIN_X[o.prediction],BIN_Z,CARRY_Y),1.1,0.1); }
+    else if(subStep==='carry'){ subStep='place'; startMove(ikTarget(BIN_X[o.prediction],BIN_Z,BIN_TOP+0.28),0.65,0.15); }  // hold: settle before release
+    else if(subStep==='place'){                 // release above the open bin, let it drop in
+      o.grabbed=false; o.falling=true; o.settling=false;
+      o.vy=0; o.vx=(Math.random()*0.4-0.2); o.vz=(Math.random()*0.4-0.2);
+      o.scatterX=Math.random()*0.4-0.2; o.scatterZ=Math.random()*0.4-0.2;
+      subStep='retract'; startMove(ikTarget(BIN_X[o.prediction],BIN_Z,CARRY_Y),0.65,0.05); }
+    else if(subStep==='retract'){ subStep='gohome'; startMove({y:0,sh:rest.sh,el:rest.el},0.7,0); }
+    else if(subStep==='gohome'){ nextPick(); }
+  }
+
+  // latch: the arm has descended TO the object. Capture the object's current
+  // offset from the tip and hold it — the object stays where it is and then
+  // rides UP with the arm. The object never jumps to the arm.
+  var tipW=new THREE.Vector3();
+  function grabInit(o){
+    tip.getWorldPosition(tipW);
+    o.grabOffset=new THREE.Vector3().subVectors(o.mesh.position, tipW);  // where it already is
+  }
+
+  // object-object collision + friction settle. objects in a bin have a collision
+  // radius; they fall, land on the floor OR on top of each other, and push apart
+  // when overlapping — an off-centre object rolls/slides off with friction damping.
+  function physicsStep(dt){
+    var settling=objects.filter(function(o){ return o.falling||o.settling; });
+    settling.forEach(function(o){
+      if(o.grabbed) return;
+      o.vy=(o.vy||0)-9.8*dt;
+      o.vx=(o.vx||0); o.vz=(o.vz||0);
+      o.mesh.position.y+=o.vy*dt;
+      o.mesh.position.x+=o.vx*dt;
+      o.mesh.position.z+=o.vz*dt;
+      // during the initial fall, drift toward the drop spot
+      if(o.falling){
+        o.mesh.position.x += ((BIN_X[o.prediction]+o.scatterX)-o.mesh.position.x)*Math.min(dt*3,1);
+        o.mesh.position.z += ((BIN_Z+o.scatterZ)-o.mesh.position.z)*Math.min(dt*3,1);
+      }
+      // floor of the bin
+      if(o.mesh.position.y<=o.yBase){
+        o.mesh.position.y=o.yBase;
+        if(o.vy<-1.2){ o.vy=-o.vy*0.3; } else { o.vy=0; }
+        o.falling=false; o.settling=true;
+        // ground friction: bleed off horizontal speed
+        o.vx*=0.94; o.vz*=0.94;
+      }
+    });
+
+    // pairwise collision ONLY between objects that have been dropped into bins
+    // (falling/settling/sorted). table objects waiting to be picked are left alone.
+    var live=objects.filter(function(o){ return !o.grabbed && (o.falling||o.settling||o.sorted); });
+    for(var i=0;i<live.length;i++){
+      for(var j=i+1;j<live.length;j++){
+        var a=live[i], b=live[j];
+        if(a.prediction!==b.prediction) continue;   // only collide within the same bin
+        var ra=a.rad||0.18, rb=b.rad||0.18, minD=ra+rb;
+        var dx=b.mesh.position.x-a.mesh.position.x;
+        var dy=b.mesh.position.y-a.mesh.position.y;
+        var dz=b.mesh.position.z-a.mesh.position.z;
+        var dist=Math.sqrt(dx*dx+dy*dy+dz*dz)||0.0001;
+        if(dist<minD){
+          var overlap=(minD-dist), nx=dx/dist, ny=dy/dist, nz=dz/dist;
+          var push=overlap*0.5;
+          a.mesh.position.x-=nx*push; a.mesh.position.y-=ny*push; a.mesh.position.z-=nz*push;
+          b.mesh.position.x+=nx*push; b.mesh.position.y+=ny*push; b.mesh.position.z+=nz*push;
+          // nudge horizontally so the upper one rolls off (friction bleeds it away)
+          a.vx=(a.vx||0)-nx*overlap*4; a.vz=(a.vz||0)-nz*overlap*4;
+          b.vx=(b.vx||0)+nx*overlap*4; b.vz=(b.vz||0)+nz*overlap*4;
+          // wake a sorted object if it got bumped
+          if(a.sorted){ a.sorted=false; a.settling=true; }
+          if(b.sorted){ b.sorted=false; b.settling=true; }
+        }
+      }
+    }
+
+    // keep everything inside its bin walls + damp with friction
+    settling.forEach(function(o){
+      var inX=0.55, inZ=0.55, bx=BIN_X[o.prediction];
+      o.mesh.position.x=Math.max(bx-inX,Math.min(bx+inX,o.mesh.position.x));
+      o.mesh.position.z=Math.max(BIN_Z-inZ,Math.min(BIN_Z+inZ,o.mesh.position.z));
+      if(o.mesh.position.y<o.yBase){ o.mesh.position.y=o.yBase; }
+      o.vx*=0.96; o.vz*=0.96;   // lighter friction — objects roll/slide more freely
+      // sleep only when nearly stopped, so movement stays lively before settling
+      if(Math.abs(o.vx)<0.02 && Math.abs(o.vz)<0.02 && Math.abs(o.vy)<0.03){
+        o.vx=o.vz=o.vy=0; o.settling=false; o.sorted=true;
+      }
+    });
+  }
+
+  function updateCarried(dt){
+    objects.forEach(function(o){
+      if(o.grabbed){
+        tip.getWorldPosition(tipW);
+        o.mesh.position.copy(tipW).add(o.grabOffset);   // follows the tip from its latch point
+      }
+    });
+    physicsStep(dt);
+  }
+
+  var last=performance.now();
+  function tick(now){
+    var dt=Math.min((now-last)/1000,0.05); last=now;
+    if(running&&!paused&&phase==='sort') stepSort(dt);
+    // apply IK angles so the VISIBLE tip matches the solved target:
+    // shoulder pitch tilts the whole upper arm at j1; the elbow bend happens at
+    // j3 (the true elbow between upper arm and forearm). keeping the bend at one
+    // joint makes forward-kinematics match the 2-bone IK, so the tip lands true.
+    j1.rotation.y=js.y;
+    s1.group.rotation.x=js.sh;
+    j2.rotation.x=0;
+    j3.rotation.x=js.el;
+    j4.rotation.x=0;
+    wrist.rotation.x=-(js.sh+js.el) + 0.05;   // keep flange pointing roughly down
+    updateCarried(dt);
+    renderer.render(scene,camera);
+    requestAnimationFrame(tick);
+  }
+
+  function resize(){
+    var w=canvas.clientWidth,h=canvas.clientHeight;
+    if(canvas.width!==w||canvas.height!==h){ renderer.setSize(w,h,false);
+      camera.aspect=w/h; camera.updateProjectionMatrix(); }
+  }
+  new ResizeObserver(resize).observe(canvas);
+  requestAnimationFrame(function(){ resize(); requestAnimationFrame(tick); });
+
+  function resetNN(){
+    BIN_ORDER.forEach(function(k){ els.fills[k].style.width='0'; els.pcts[k].textContent='0%'; });
+    els.nnIdle.style.display=''; els.nnCrop.style.background='#0b0d11'; els.nnCrop.style.backgroundImage='none'; els.scan.style.display='none';
+  }
+
+  function doReset(){
+    objects.forEach(function(o){ scene.remove(o.mesh); });
+    objects=[];queue=[];current=null;running=false;paused=false;phase='idle';detectList=[];detectIdx=0;holdT=0;move=null;
+    els.play.textContent='Play'; aimHome(); renderDetect(); resetNN();
+    setStatus('idle','idle'); els.badge.textContent='arm camera · idle'; updateCount();
+    // seed one of each kind
+    ['sphere','cube','pyramid','other'].forEach(function(k){ spawn(k); });
+  }
+
+  // one button: "Play" when idle -> starts the run and becomes "Reset";
+  // "Reset" while a run is going -> clears back to a fresh idle scene.
+  els.play.addEventListener('click',function(){
+    if(running || phase==='done'){
+      doReset();               // acts as Reset during/after a run
+    } else {
+      beginRun();              // acts as Play when idle
+      els.play.textContent='Reset';
+    }
+  });
+  els.spawnBtns.forEach(function(b){ b.addEventListener('click',function(){ spawn(b.dataset.kind); }); });
+
+  ['cube','sphere','pyramid','other'].forEach(function(k,i){ setTimeout(function(){ spawn(k); },i*90); });
+  updateCount();
+})();
+</script>
+</body>
+</html>
