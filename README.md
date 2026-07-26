@@ -12,7 +12,7 @@ robot.
   classifies it with the Stage A model, and physically picks it up and places it
   in the matching bin.
 
-**[Try the interactive demo →](https://shalikabhattacharyya.github.io/sorting-robot/)**
+**[Try the interactive demo →](https://shalikabhattacharyya.github.io/Sorting-Robot/)**
 
 ## How it works
 
