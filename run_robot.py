@@ -10,6 +10,8 @@ import time
 import numpy as np
 import pybullet as p
 import pybullet_data
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from fastai.vision.all import load_learner, PILImage
 
@@ -498,14 +500,18 @@ def main():
     make_pyramid_obj()
 
     p.connect(p.GUI)
+    time.sleep(1.0)                                    # let the window come up
+    p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.resetSimulation()
     p.setGravity(0, 0, -9.8)
+    for _ in range(120):
+        p.stepSimulation()
+        time.sleep(1/60)
     p.loadURDF("plane.urdf")
-
     robot = p.loadURDF("kuka_iiwa/model.urdf", basePosition=[0, 0, 0], useFixedBase=True)
     print(f"KUKA arm loaded (id {robot}), {p.getNumJoints(robot)} joints")
-
+    
     # movable joints, end-effector, orientations, damping
     movable = [j for j in range(p.getNumJoints(robot))
                if p.getJointInfo(robot, j)[2] != p.JOINT_FIXED]
