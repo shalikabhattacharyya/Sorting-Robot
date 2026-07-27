@@ -8,7 +8,12 @@ from fastai.vision.all import (ImageDataLoaders, Resize, aug_transforms,
                                vision_learner, resnet18, accuracy,
                                load_learner, Path)
 
-from common import DATASET_DIRECTORY, MODEL_PATH
+# Training only needs these two paths. We deliberately do NOT import from
+# common.py here: common imports pybullet, and on Windows fastai's data-loader
+# worker processes re-import the script, which would re-initialise pybullet over
+# and over ("pybullet build time..." spam). Keeping training pybullet-free avoids that.
+DATASET_DIRECTORY = 'shape_dataset'
+MODEL_PATH = 'shape_classifier.pkl'
 
 
 def main():
@@ -17,9 +22,9 @@ def main():
         valid_pct=0.2,                # hold out 20% for validation
         item_tfms=Resize(128),        # uniform 128x128
         batch_tfms=aug_transforms(),  # random flips/rotations = free variety
+        num_workers=0,                # 0 = no worker subprocesses (required on Windows)
         seed=42                       # reproducible split
     )
-    dls.show_batch(max_n=9)
 
     learn = vision_learner(dls, resnet18, metrics=accuracy)
     learn.fine_tune(4)
