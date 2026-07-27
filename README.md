@@ -13,6 +13,7 @@ robot.
   in the matching bin.
 
 **[Try the interactive demo →](https://shalikabhattacharyya.github.io/Sorting-Robot/)**
+— a browser recreation that classifies each shape live, then sorts it. No install needed.
 
 ## How it works
 
@@ -25,14 +26,15 @@ it reliable.
 
 The arm uses null-space inverse kinematics for natural poses, sinusoidal easing
 for smooth motion, and constraint-based grasping (an invisible fixed joint that
-welds an object to the flange). Objects are verified by their actual resting
-position, not the arm's, and misplaced ones are re-sorted over up to three rounds.
+welds an object to the flange). Placement is verified by each object's actual
+resting position — not the arm's — and misplaced objects are re-sorted over up to
+three rounds.
 
 ## Project layout
 
 | File | Purpose |
 |------|---------|
-| `common.py` | Shared constants and functions (notably `crop_object`, which must be identical across stages) |
+| `common.py` | Shared constants and functions — notably `crop_object`, identical across both stages |
 | `generate_data.py` | Stage A: render training scenes into `shape_dataset/` |
 | `train.py` | Stage A: train the ResNet-18 and export `shape_classifier.pkl` |
 | `run_robot.py` | Stage B: spawn a scene, detect each object, and sort it |
@@ -48,7 +50,7 @@ pip install -r requirements.txt
 Run in order — each step depends on the previous one:
 
 ```bash
-python generate_data.py     # renders ~800 training crops (a few minutes)
+python generate_data.py     # renders the training crops (a few minutes)
 python train.py             # trains the classifier, saves shape_classifier.pkl
 python run_robot.py         # opens the sim and sorts the objects
 ```
@@ -56,9 +58,18 @@ python run_robot.py         # opens the sim and sorts the objects
 `generate_data.py` and `train.py` only need to be run once. After that,
 `run_robot.py` loads the saved model from disk each time.
 
+`generate_data.py` also accepts options:
+
+```bash
+python generate_data.py --scenes 40   # smaller/faster dataset for a quick test
+python generate_data.py --seed 42     # reproducible dataset
+```
+
 ## Notes
 
 - The generated dataset and trained model are gitignored — they're reproducible
   from the code, so they don't belong in the repo.
-- `run_robot.py` opens a GUI window. Disconnecting cleanly (it waits for Enter at
-  the end) avoids leaving a stale PyBullet connection.
+- `run_robot.py` opens a GUI window and waits for Enter at the end before
+  disconnecting, which avoids leaving a stale PyBullet connection.
+- On some Windows setups the PyBullet window can take a moment to initialize on
+  first launch — give it a few seconds before assuming it's stuck.
