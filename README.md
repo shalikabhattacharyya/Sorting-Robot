@@ -12,7 +12,7 @@ robot.
   classifies it with the Stage A model, and physically picks it up and places it
   in the matching bin.
 
-![The KUKA iiwa arm sorting objects into labeled bins in PyBullet]("C:\Users\shrut\OneDrive\Pictures\Screenshots\Screenshot 2026-07-27 114525.png")
+![The KUKA iiwa arm sorting objects into labeled bins in PyBullet](Demo)
 
 **[Try the interactive demo →](https://shalikabhattacharyya.github.io/Sorting-Robot/)**
 — a browser recreation that classifies each shape live, then sorts it. No install needed.
