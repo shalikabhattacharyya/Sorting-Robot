@@ -1,11 +1,17 @@
 """Stage A, part 1: generate synthetic training data.
 
-Renders 200 random scenes of 3D shapes, crops each object, and saves the
+Renders random scenes of 3D shapes, crops each object, and saves the
 crops into shape_dataset/<category>/. Run this once before train.py.
+
+Usage:
+    python generate_data.py                 # default 200 scenes, random data
+    python generate_data.py --scenes 20     # quick test run
+    python generate_data.py --seed 42       # reproducible dataset
 """
 
 import os
 import shutil
+import argparse
 import numpy as np
 import pybullet as p
 from PIL import Image
@@ -13,8 +19,6 @@ from PIL import Image
 from common import (DATASET_DIRECTORY, CATEGORIES, GRID_SPOTS,
                     make_pyramid_obj, random_color, category_of,
                     start_headless, photograph, crop_object)
-
-SCENES = 200
 
 # detector-scale sizes — large, for clear photos
 DET_SPHERE_RADIUS, DET_CUBE_HALF, DET_PYRAMID_SCALE = 0.5, 0.4, 0.7
@@ -50,7 +54,11 @@ def pick_kind():
     return category
 
 
-def main():
+def main(scenes=200, seed=None):
+    if seed is not None:
+        np.random.seed(seed)                     # reproducible dataset
+        print(f"random seed set to {seed}")
+
     make_pyramid_obj()
 
     # wipe and rebuild the dataset folder — the model lives elsewhere, so it's safe
@@ -64,7 +72,7 @@ def main():
     counts = {c: 0 for c in CATEGORIES}          # images saved per category
     spawn_positions = GRID_SPOTS.copy()          # copy — shuffled in place
 
-    for s in range(SCENES):
+    for s in range(scenes):
         np.random.shuffle(spawn_positions)
         n = np.random.randint(3, 6)              # 3-5 objects this scene
         scene_objects = []
@@ -86,11 +94,27 @@ def main():
             p.removeBody(body)
 
         if (s + 1) % 25 == 0:
-            print(f"scene {s+1}/{SCENES} — counts: {counts}")
+            print(f"scene {s+1}/{scenes} — counts: {counts}")
 
     p.disconnect()
     print(f"\nDone — {counts}")
 
+    # sanity check: warn if any category came out too small to train well
+    total = sum(counts.values())
+    if total == 0:
+        print("! WARNING: no images were saved — check the crop/camera setup.")
+    else:
+        for category, count in counts.items():
+            if count < max(10, total * 0.1):
+                print(f"! WARNING: '{category}' has only {count} images "
+                      f"({count/total:.0%}) — training may be unbalanced.")
+
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Generate synthetic shape training data.")
+    parser.add_argument('--scenes', type=int, default=200,
+                        help="number of scenes to render (default 200)")
+    parser.add_argument('--seed', type=int, default=None,
+                        help="random seed for a reproducible dataset")
+    args = parser.parse_args()
+    main(scenes=args.scenes, seed=args.seed)
